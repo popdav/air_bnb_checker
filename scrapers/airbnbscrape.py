@@ -2,6 +2,7 @@ import json
 import scrapy
 from datetime import datetime
 import re
+import sys
 
 
 class AirbnbSpider(scrapy.Spider):
@@ -11,6 +12,17 @@ class AirbnbSpider(scrapy.Spider):
     data = f.read()
     dataJson = json.loads(data)
     f.close()
+    now_date = datetime.now()
+    checkin = datetime.fromisoformat(dataJson['checkin'])
+    checkout = datetime.fromisoformat(dataJson['checkout'])
+
+    check_date_in_out = checkout < checkin
+    check_date_to_now = checkin < now_date or checkout < now_date
+
+    if check_date_in_out or check_date_to_now:
+        print("Wrong date")
+        sys.exit(1)
+
     url = 'https://www.airbnb.com/s/{}--{}/homes?refinement_paths%5B%5D=%2Fhomes&checkin={}&checkout={}&adults={' \
           '}&children={}&infants={}&search_type=pagination'
     i = 2
@@ -30,19 +42,23 @@ class AirbnbSpider(scrapy.Spider):
     t.write('property_id,type,link\n')
     t.close()
 
+    file_name_num_page = 'page_num_' + file_name
+    t = open(file_name_num_page, "w+")
+    t.write('property_id,page_number\n')
+    t.close()
+
     def parse(self, response):
         print(response.url)
 
         self.parse_page(response)
         str_url = '//ul[contains(@data-id, \"SearchResultsPagination\")]/li[contains(@data-id, \"page-{0}\")]/a/@href'.format(
             str(self.i))
+
         res_next_url = response.xpath(str_url).get()
+
         if res_next_url is not None:
             next_url = 'https://www.airbnb.com' + res_next_url
-
-        self.i += 1
-
-        if res_next_url is not None:
+            self.i += 1
             yield scrapy.Request(response.urljoin(next_url), callback=self.parse)
 
     def parse_page(self, response):
@@ -57,10 +73,13 @@ class AirbnbSpider(scrapy.Spider):
         )
 
         f = open(self.file_name, 'a')
+        t = open(self.file_name_num_page, 'a')
         for room in rooms:
             typeR = re.search('https://www.airbnb.com/([a-zA-Z]*)/([0-9]*)', room).group(1)
             idR = re.search('https://www.airbnb.com/([a-zA-Z]*)/([0-9]*)', room).group(2)
             f.write(idR + ',' + typeR + ',' + room + '\n')
+            t.write(idR + ',' + str(self.i - 1) + '\n')
 
         f.close()
+        t.close()
 
