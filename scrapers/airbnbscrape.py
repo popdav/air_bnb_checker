@@ -1,4 +1,3 @@
-import json
 import scrapy
 from datetime import datetime
 import re
@@ -8,48 +7,57 @@ import sys
 class AirbnbSpider(scrapy.Spider):
     name = 'airbnb_scrap'
     allowed_domains = ['airbnb.com']
-    f = open("/home/popdav/rista/airbnb_checker/scrapers/conf.json", "r")
-    data = f.read()
-    dataJson = json.loads(data)
-    f.close()
-    now_date = datetime.now()
-    checkin = datetime.fromisoformat(dataJson['checkin'])
-    checkout = datetime.fromisoformat(dataJson['checkout'])
 
-    check_date_in_out = checkout < checkin
-    check_date_to_now = checkin < now_date or checkout < now_date
+    def __init__(self, dataJson, **kwargs):
+        super().__init__(**kwargs)
 
-    if check_date_in_out or check_date_to_now:
-        print("Wrong date")
-        sys.exit(1)
+        if dataJson is None:
+            print("Conf file error, json object is None")
+            sys.exit(1)
 
-    url = 'https://www.airbnb.com/s/{}--{}/homes?refinement_paths%5B%5D=%2Fhomes&checkin={}&checkout={}&adults={' \
-          '}&children={}&infants={}&search_type=pagination'
-    i = 2
-    current_page = 'page-' + str(i)
-    start_urls = [
-        url.format(dataJson['place'], dataJson['country'], dataJson['checkin'], dataJson['checkout'],
-                   dataJson['adults'], dataJson['children'], dataJson['infants'])
-    ]
+        # f = open("/home/popdav/rista/airbnb_checker/scrapers/conf.json", "r")
+        # data = f.read()
+        # dataJson = json.loads(data)
+        # f.close()
+        now_date = datetime.now()
+        checkin = datetime.fromisoformat(dataJson['checkin'])
+        checkout = datetime.fromisoformat(dataJson['checkout'])
 
-    date_time_obj = datetime.now()
-    timestamp_str = date_time_obj.strftime("%d-%b-%Y_(%H:%M:%S.%f)")
-    file_name = 'place={}&country={}&checkin={}&checkout={}&adults={}&children={}&infants={}_{}.csv'.format(
-        dataJson['place'],
-        dataJson['country'], dataJson['checkin'], dataJson['checkout'],
-        dataJson['adults'], dataJson['children'], dataJson['infants'], timestamp_str)
-    t = open(file_name, "w+")
-    t.write('property_id,type,link\n')
-    t.close()
+        check_date_in_out = checkout < checkin
+        check_date_to_now = checkin < now_date or checkout < now_date
 
-    file_name_num_page = 'page_num_' + file_name
-    t = open(file_name_num_page, "w+")
-    t.write('property_id,page_number\n')
-    t.close()
+        if check_date_in_out or check_date_to_now:
+            print("Wrong date")
+            sys.exit(1)
+
+        url = 'https://www.airbnb.com/s/{}--{}/homes?refinement_paths%5B%5D=%2Fhomes&checkin={}&checkout={}&adults={' \
+              '}&children={}&infants={}&search_type=pagination'
+        self.i = 2
+
+        self.start_urls = [
+            url.format(dataJson['place'], dataJson['country'], dataJson['checkin'], dataJson['checkout'],
+                       dataJson['adults'], dataJson['children'], dataJson['infants'])
+        ]
+
+        date_time_obj = datetime.now()
+        timestamp_str = date_time_obj.strftime("%d-%b-%Y_(%H:%M:%S.%f)")
+        self.file_name = 'place={}&country={}&checkin={}&checkout={}&adults={}&children={}&infants={}_{}.csv'.format(
+            dataJson['place'],
+            dataJson['country'], dataJson['checkin'], dataJson['checkout'],
+            dataJson['adults'], dataJson['children'], dataJson['infants'], timestamp_str)
+        t = open(self.file_name, "w+")
+        t.write('property_id,type,link\n')
+        t.close()
+
+        self.file_name_num_page = 'page_num_' + self.file_name
+        t = open(self.file_name_num_page, "w+")
+        t.write('property_id,page_number\n')
+        t.close()
 
     def parse(self, response):
+        print('*******************************************************************************************************')
         print(response.url)
-
+        print('*******************************************************************************************************')
         self.parse_page(response)
         str_url = '//ul[contains(@data-id, \"SearchResultsPagination\")]/li[contains(@data-id, \"page-{0}\")]/a/@href'.format(
             str(self.i))
