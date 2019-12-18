@@ -1,9 +1,20 @@
-{
-  "place": "Belgrade",
-  "country" : "Serbia",
-  "checkin" : "2019-12-25",
-  "checkout" : "2019-12-30",
-  "adults" : "3",
-  "children" : "0",
-  "infants" : "0"
-}
+[
+  {
+    "place": "Belgrade",
+    "country" : "Serbia",
+    "checkin" : "2019-12-20",
+    "checkout" : "2019-12-30",
+    "adults" : "3",
+    "children" : "0",
+    "infants" : "0"
+  },
+  {
+    "place": "Belgrade",
+    "country" : "Serbia",
+    "checkin" : "2019-12-20",
+    "checkout" : "2019-12-27",
+    "adults" : "3",
+    "children" : "0",
+    "infants" : "0"
+  }
+]
