@@ -34,18 +34,17 @@ s['USER_AGENTS'] = [
      'Chrome/63.0.3239.108 '
      'Safari/537.36'),  # chrome
 ]
-s['DOWNLOAD_DELAY'] = 1
+s['DOWNLOAD_DELAY'] = 5
 s['DOWNLOADER_MIDDLEWARES'] = {
     'scrapy.downloadermiddlewares.useragent.UserAgentMiddleware': None,
     'scrapy_useragents.downloadermiddlewares.useragents.UserAgentsMiddleware': 500,
     'scrapy_splash.SplashCookiesMiddleware': 723,
     'scrapy_splash.SplashMiddleware': 725,
-    'scrapy.downloadermiddlewares.httpcompression.HttpCompressionMiddleware': 810,
-    'scrapy_selenium.SeleniumMiddleware': 800
+    'scrapy.downloadermiddlewares.httpcompression.HttpCompressionMiddleware': 810
 }
 s['COOKIES_ENABLED'] = True
 s['COOKIES_DEBUG'] = True
-s['SPLASH_URL'] = 'http://192.168.59.103:8050'
+s['SPLASH_URL'] = 'http://localhost:8050'
 
 s['SPIDER_MIDDLEWARES'] = {
     'scrapy_splash.SplashDeduplicateArgsMiddleware': 100,

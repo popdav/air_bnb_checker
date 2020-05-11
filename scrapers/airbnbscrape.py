@@ -1,14 +1,21 @@
-import scrapy
+import os
+import re
 from datetime import datetime
-import re, json
-from database.mongodb.mongo_client import MongoDB
-from scrapy_selenium import SeleniumRequest
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 
-db = MongoDB('airbnb')
+import scrapy
+from scrapy_splash import SplashRequest
+# get docker on Linux: sudo docker pull scrapinghub/splash
+# get docker on OS X: docker pull scrapinghub/splash
+# start splash docker
+#  on Windows 10 with: docker run -p 5023:5023 -p 8050:8050 -p 8051:8051 scrapinghub/splash
+#  on Linux: sudo docker run -it -p 8050:8050 --rm scrapinghub/splash
+#  on OS X: docker run -it -p 8050:8050 --rm scrapinghub/splash
+
+from database.mongodb.mongo_client import MongoDB
+
+db = MongoDB('Airbnb')
+
+WAIT_TIME_SPLASH = 20  # seconds
 
 
 class AirbnbSpider(scrapy.Spider):
@@ -19,10 +26,6 @@ class AirbnbSpider(scrapy.Spider):
 
     def __init__(self, dataJson, **kwargs):
         super().__init__(**kwargs)
-
-        self.driver = webdriver.Chrome('/usr/lib/chromium-browser/chromedriver')
-        self.wait = WebDriverWait(self.driver, 10)
-        self.driver.set_window_size(1500, 1000)
 
         try:
             if dataJson is None:
@@ -51,9 +54,12 @@ class AirbnbSpider(scrapy.Spider):
 
             date_time_obj = datetime.now()
             timestamp_str = date_time_obj.strftime("%d-%b-%Y_(%H:%M:%S.%f)")
-            self.file_name = '{}_{}_{}_{}_{}.csv'.format(
+            self.file_name = u'{}_{}_{}_{}_{}.csv'.format(
                 dataJson['checkin'], dataJson['checkout'], dataJson['place'], dataJson['country'], timestamp_str)
-            t = open(self.file_name, "w+")
+
+            # self.file_name = r'test.csv'
+            print(self.file_name)
+            t = open(os.path.join(self.file_name), "w+")
             t.write('property_id,page_number,type,link\n')
             t.close()
         except Exception as e:
@@ -64,8 +70,9 @@ class AirbnbSpider(scrapy.Spider):
         for req in self.parse_page(response):
             yield req
 
-        str_url = '//ul[contains(@data-id, \"SearchResultsPagination\")]/li[contains(@data-id, \"page-{0}\")]/a/@href'.format(
-            str(self.i))
+
+        str_url = '//ul[contains(@data-id, \"SearchResultsPagination\")]/li[contains(@data-id, \"page-{0}\")]/a/@href' \
+            .format(str(self.i))
 
         res_next_url = response.xpath(str_url).get()
 
@@ -75,6 +82,7 @@ class AirbnbSpider(scrapy.Spider):
             yield scrapy.Request(response.urljoin(next_url), callback=self.parse)
 
     def parse_page(self, response):
+
         rooms = response.xpath('//div[contains(@itemprop, \"itemListElement\")]/meta[contains(@itemprop, '
                                '\"url\")]/@content').getall()
 
@@ -85,7 +93,7 @@ class AirbnbSpider(scrapy.Spider):
                 rooms)
         )
 
-        f = open(self.file_name, 'a')
+        f = open(os.path.join(self.file_name), 'a')
         for room in rooms:
             typeR = re.search('https://www.airbnb.com/([a-zA-Z]*)/([0-9]*)', room).group(1)
             idR = re.search('https://www.airbnb.com/([a-zA-Z]*)/([0-9]*)', room).group(2)
@@ -98,38 +106,87 @@ class AirbnbSpider(scrapy.Spider):
             finUrl = url + '?&check_in={}&check_out={}&adults={}&children={}&infants={}' \
                 .format(self.dataJson['checkin'], self.dataJson['checkout'], self.dataJson['adults'],
                         self.dataJson['children'], self.dataJson['infants'])
-            yield scrapy.Request(
-                url=response.urljoin(finUrl),
-                callback=self.parse_room,
-                dont_filter=True,
-                meta={'id': idR}
-            )
+            if idR != '':
+                yield SplashRequest(
+                    url=response.urljoin(url),
+                    callback=self.parse_room,
+                    meta={'id': idR},
+                    args={
+                        'html': 1,
+                        'png': 1,
+                        'wait': WAIT_TIME_SPLASH,
+                        'render_all': 1,
+                    }
+                )
 
     def parse_room(self, response):
+        html = response.body
 
-        idR = response.meta.get('id')
+        name = response.xpath('//*[@id="summary"]/div/div/div[1]/div/div/div[1]/div[1]/div/span/h1/span/text()').get()
 
-        self.driver.get(response.url)
-        self.driver.implicitly_wait(10)
+        price = response.xpath('//*[@id="room"]/div[2]/div/div[2]/div[2]/div/div/div/div[2]/div/div/div['
+                               '1]/div/div/div/div[1]/div/div/div[1]/div/span[2]/span/text()').get()
 
-        name = self.driver.find_element_by_xpath('//*[@id="summary"]/div/div/div[1]/div/div/div[1]/div[1]/'
-                                                 'div/span/h1/span')
-        print(name.text)
+        if price is not None:
+            price_search = re.search('\$([0-9]*)', price)
+            if price_search is not None:
+                price = price_search.group(1)
 
-        stars = self.driver.find_element_by_xpath('//*[@id="room"]/div[2]/div/div[2]/div[2]/div/div/div[1]/div/div/'
-                                                  'div[1]/div/div/div[2]/div[2]/button/div/div[1]/div[2]/div/div')
-        print(stars.text)
+        details = response.xpath('//*[@id="room"]/div[2]/div/div[2]/div[1]/div/div[3]/div/div/div['
+                                 '@class="_504dcb"]/div/div/div[2]/div/span/text()').getall()
 
-        price_per_day = self.driver.find_element_by_xpath('//*[@id="room"]/div[2]/div/div[2]/div[2]/div/div/div[1]/'
-                                                          'div/div/div[1]/div/div/div[2]/div[1]/div/span[2]/span')
-        print(price_per_day.text)
+        superhost = False
+        if details is not None:
+            for d in details:
+                has_superhost = re.search('Superhost', d)
+                if has_superhost is not None:
+                    superhost = True
+                    break
 
-        cleaning_fee = self.driver.find_element_by_xpath('//*[@id="book_it_form"]/div[2]/div[2]/div[1]/div[2]/span/span')
-        print(cleaning_fee.text)
+        stars = response.xpath('//*[@id="room"]/div[2]/div/div[2]/div[2]/div/div/div/div[2]/div/div/div['
+                               '1]/div/div/div/div[1]/div/div/div[2]/button/div/div[1]/div[2]/div/div/text()').get()
 
-        service_fee = self.driver.find_element_by_xpath('//*[@id="book_it_form"]/div[2]/div[3]/div[1]/div[2]/span/span')
-        print(service_fee.text)
+        sleeping_arr = response.xpath('//*[@id="room"]/div[2]/div/div[2]/div[1]/div/div[3]/div/div/div['
+                                      '1]/div/div/div/div/text()').getall()
+        sleeping = {}
+        if sleeping_arr is not None:
+            for i in range(len(sleeping_arr)):
+                number_search = re.search('([0-9]*) ([a-zA-Z]*)', sleeping_arr[i])
+                if number_search is None:
+                    number = 0
+                else:
+                    number = number_search.group(1)
 
-        total_price = self.driver.find_element_by_xpath('//*[@id="book_it_form"]/div[4]/div[2]/div/div/div[2]/span/span')
-        print(total_price.text)
-        print("################################################################")
+                type_of_search = re.search('([0-9]*) ([a-zA-Z]*)', sleeping_arr[i])
+                if type_of_search is None:
+                    type_of = 'not_found'
+                else:
+                    type_of = type_of_search.group(2)
+
+                sleeping[type_of] = int(number if number != '' else 0)
+
+        review_fields = response.xpath('//*[@id="reviews"]/div/div/section/div[2]/div[1]/div/div/div/div'
+                                       '/div/div/div/span[@class="_czm8crp"]/text()').getall()
+
+        review_grades = response.xpath('//*[@id="reviews"]/div/div/section/div[2]/div[1]/div/div/div/div'
+                                       '/div/div/div[2]/div/div/div[2]/div/div[@class="_1p3joamp"]/text()').getall()
+        review_number = response.xpath('//*[@id="reviews"]/div/div/section/div[1]/div/div[2]/div['
+                                       '1]/div/div/div/div/div/div[3]/span[1]/text()').get()
+        review = {}
+        if review_fields is not None and review_grades is not None:
+            for i in range(len(review_fields)):
+                review[review_fields[i].lower() if review_fields[i] is not None else ''] = float(review_grades[i]) if review_grades[i] is not None else None
+
+        insert_object = {
+            'airbnb_id': response.meta['id'],
+            'name': name,
+            'price': float(price) if price is not None else None,
+            'sleeping': sleeping,
+            'superhost': superhost,
+            'stars': float(stars) if stars is not None else None,
+            'review_number': int(review_number) if review_number is not None else None,
+            'review': review
+        }
+        collection_name = self.file_name[:self.file_name.find('.csv')]
+        db.insert_one(insert_object, collection_name)
+        print(f"inserted: \n url: {response.url}, id: {response.meta['id']}, name: {name}")
